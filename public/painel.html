@@ -16,6 +16,10 @@
 
 <body>
 
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
     <header>
 
         <div class="logo">
@@ -23,72 +27,173 @@
         </div>
 
         <nav>
-            <span id="nomeUsuario"></span>
 
-            <button id="btnSair">
+            <span id="nomeUsuario">
+                Carregando...
+            </span>
+
+            <button
+                id="btnSair"
+                type="button"
+            >
                 Sair
             </button>
+
         </nav>
 
     </header>
 
+
+    <!-- =====================================================
+         CONTEÚDO PRINCIPAL
+    ====================================================== -->
+
     <main class="painel">
 
-        <h1>
-            Painel do fotógrafo
-        </h1>
+        <div class="painel-topo">
 
-        <p>
-            Gerencie seus clientes, galerias e fotografias.
-        </p>
+            <div>
 
-        <div class="cards-painel">
-
-            <div class="card-painel">
-
-                <h2>👤 Clientes</h2>
+                <h1>
+                    Painel do fotógrafo
+                </h1>
 
                 <p>
-                    Cadastre e gerencie seus clientes.
+                    Gerencie seus clientes, galerias e seleções.
                 </p>
-
-                <button>
-                    Clientes
-                </button>
 
             </div>
 
-            <div class="card-painel">
 
-                <h2>📁 Galerias</h2>
-
-                <p>
-                    Crie galerias para seus ensaios.
-                </p>
-
-                <button>
-                    Criar galeria
-                </button>
-
-            </div>
-
-            <div class="card-painel">
-
-                <h2>📷 Fotos</h2>
-
-                <p>
-                    Envie fotos para seus clientes.
-                </p>
-
-                <button>
-                    Enviar fotos
-                </button>
-
-            </div>
+            <button
+                class="botao-nova-galeria"
+                type="button"
+                onclick="window.location.href='/nova-galeria.html'"
+            >
+                + Nova galeria
+            </button>
 
         </div>
 
+
+        <!-- =================================================
+             RESUMO
+        ================================================== -->
+
+        <section class="resumo-painel">
+
+            <div class="resumo-card">
+
+                <span class="resumo-icone">
+                    📁
+                </span>
+
+                <div>
+
+                    <strong id="totalGalerias">
+                        0
+                    </strong>
+
+                    <p>
+                        Galerias
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="resumo-card">
+
+                <span class="resumo-icone">
+                    📷
+                </span>
+
+                <div>
+
+                    <strong id="totalFotos">
+                        0
+                    </strong>
+
+                    <p>
+                        Fotos
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div class="resumo-card">
+
+                <span class="resumo-icone">
+                    ❤️
+                </span>
+
+                <div>
+
+                    <strong id="totalSelecionadas">
+                        0
+                    </strong>
+
+                    <p>
+                        Selecionadas
+                    </p>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- =================================================
+             GALERIAS
+        ================================================== -->
+
+        <section class="secao-galerias">
+
+            <div class="secao-titulo">
+
+                <div>
+
+                    <h2>
+                        Minhas galerias
+                    </h2>
+
+                    <p>
+                        Veja as galerias criadas para seus clientes.
+                    </p>
+
+                </div>
+
+            </div>
+
+
+            <div
+                id="mensagemPainel"
+                class="mensagem-painel"
+            >
+            </div>
+
+
+            <div
+                id="listaGalerias"
+                class="lista-galerias"
+            >
+
+                <div class="carregando-galerias">
+
+                    Carregando galerias...
+
+                </div>
+
+            </div>
+
+        </section>
+
     </main>
+
 
     <script src="/js/painel.js"></script>
 
