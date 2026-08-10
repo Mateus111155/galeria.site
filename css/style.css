@@ -1,105 +1,91 @@
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+/* LOGIN E CADASTRO */
 
-body {
-    font-family: Arial, sans-serif;
+.pagina-login {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
     background: #0f0f0f;
-    color: white;
 }
 
-/* HEADER */
+.caixa-login {
+    width: 400px;
+    padding: 40px;
 
-header {
-    height: 80px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8%;
-    background: #111;
-    border-bottom: 1px solid #222;
+    background: #181818;
+
+    border: 1px solid #292929;
+    border-radius: 15px;
+
+    text-align: center;
+
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
 }
 
-.logo {
-    font-size: 22px;
-    font-weight: bold;
+.caixa-login h1 {
+    margin-bottom: 30px;
 }
 
-nav {
-    display: flex;
-    align-items: center;
-    gap: 25px;
+.caixa-login h2 {
+    margin-bottom: 10px;
 }
 
-nav a {
-    color: white;
-    text-decoration: none;
-}
-
-.botao {
-    background: white;
-    color: black;
-    padding: 12px 20px;
-    border-radius: 8px;
-}
-
-/* HERO */
-
-.hero {
-    min-height: calc(100vh - 80px);
-    display: flex;
-    align-items: center;
-    padding: 0 8%;
-
-    background:
-        linear-gradient(
-            rgba(0,0,0,0.65),
-            rgba(0,0,0,0.8)
-        ),
-        url("https://images.unsplash.com/photo-1516035069371-29a1b244cc32?auto=format&fit=crop&w=2000&q=80");
-
-    background-size: cover;
-    background-position: center;
-}
-
-.hero-texto {
-    max-width: 650px;
-}
-
-.hero h1 {
-    font-size: 70px;
-    line-height: 1.05;
+.caixa-login p {
+    color: #aaa;
     margin-bottom: 25px;
 }
 
-.hero p {
-    font-size: 20px;
-    line-height: 1.6;
-    color: #ddd;
-    margin-bottom: 35px;
+.caixa-login form {
+    text-align: left;
 }
 
-.botoes {
-    display: flex;
-    gap: 15px;
+.caixa-login label {
+    display: block;
+    margin-bottom: 8px;
+    margin-top: 18px;
 }
 
-.botao-principal,
-.botao-secundario {
-    padding: 15px 25px;
+.caixa-login input {
+    width: 100%;
+    padding: 14px;
+
+    background: #222;
+    color: white;
+
+    border: 1px solid #333;
     border-radius: 8px;
-    text-decoration: none;
-    font-weight: bold;
+
+    outline: none;
 }
 
-.botao-principal {
+.caixa-login input:focus {
+    border-color: white;
+}
+
+.caixa-login button {
+    width: 100%;
+
+    margin-top: 25px;
+    padding: 14px;
+
+    border: none;
+    border-radius: 8px;
+
     background: white;
     color: black;
+
+    font-size: 16px;
+    font-weight: bold;
+
+    cursor: pointer;
 }
 
-.botao-secundario {
-    border: 1px solid white;
+.caixa-login button:hover {
+    opacity: 0.85;
+}
+
+.caixa-login a {
     color: white;
+    text-decoration: none;
 }
