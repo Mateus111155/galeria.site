@@ -5,9 +5,19 @@
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
+
 const sqlite3 = require("sqlite3").verbose();
+
 const bcrypt = require("bcryptjs");
 const session = require("express-session");
+
+const multer = require("multer");
+const sharp = require("sharp");
+
+
+// ============================================================
+// APP
+// ============================================================
 
 const app = express();
 
@@ -15,21 +25,50 @@ const PORT = process.env.PORT || 3000;
 
 
 // ============================================================
-// PASTAS DO PROJETO
+// PASTAS
 // ============================================================
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const CSS_DIR = path.join(__dirname, "css");
 const JS_DIR = path.join(__dirname, "js");
+
 const DATABASE_DIR = path.join(__dirname, "database");
 
+const UPLOADS_DIR = path.join(__dirname, "uploads");
 
-// Cria a pasta database caso não exista
-if (!fs.existsSync(DATABASE_DIR)) {
-    fs.mkdirSync(DATABASE_DIR, {
-        recursive: true
-    });
-}
+const ORIGINALS_DIR = path.join(
+    UPLOADS_DIR,
+    "originais"
+);
+
+const PREVIEWS_DIR = path.join(
+    UPLOADS_DIR,
+    "previews"
+);
+
+
+// ============================================================
+// CRIAR PASTAS
+// ============================================================
+
+[
+    DATABASE_DIR,
+    UPLOADS_DIR,
+    ORIGINALS_DIR,
+    PREVIEWS_DIR
+].forEach((pasta) => {
+
+    if (!fs.existsSync(pasta)) {
+
+        fs.mkdirSync(
+            pasta,
+            {
+                recursive: true
+            }
+        );
+    }
+
+});
 
 
 // ============================================================
@@ -44,29 +83,31 @@ const DATABASE_PATH = path.join(
 
 const db = new sqlite3.Database(
     DATABASE_PATH,
+
     (erro) => {
 
         if (erro) {
 
             console.error(
-                "❌ Erro ao abrir banco de dados:",
+                "❌ Erro ao abrir banco:",
                 erro
             );
 
         } else {
 
             console.log(
-                "✅ Banco de dados conectado."
+                "✅ Banco conectado."
             );
 
             criarTabelas();
         }
+
     }
 );
 
 
 // ============================================================
-// CRIAÇÃO DAS TABELAS
+// CRIAR TABELAS
 // ============================================================
 
 function criarTabelas() {
@@ -74,7 +115,7 @@ function criarTabelas() {
     db.serialize(() => {
 
         // ====================================================
-        // USUÁRIOS / FOTÓGRAFOS
+        // USUÁRIOS
         // ====================================================
 
         db.run(`
@@ -89,6 +130,7 @@ function criarTabelas() {
                 senha TEXT NOT NULL,
 
                 criado_em DATETIME DEFAULT CURRENT_TIMESTAMP
+
             )
         `);
 
@@ -116,6 +158,7 @@ function criarTabelas() {
 
                 FOREIGN KEY(usuario_id)
                 REFERENCES usuarios(id)
+
             )
         `);
 
@@ -154,6 +197,7 @@ function criarTabelas() {
 
                 FOREIGN KEY(cliente_id)
                 REFERENCES clientes(id)
+
             )
         `);
 
@@ -173,12 +217,13 @@ function criarTabelas() {
 
                 arquivo_original TEXT NOT NULL,
 
-                arquivo_preview TEXT,
+                arquivo_preview TEXT NOT NULL,
 
                 criado_em DATETIME DEFAULT CURRENT_TIMESTAMP,
 
                 FOREIGN KEY(galeria_id)
                 REFERENCES galerias(id)
+
             )
         `);
 
@@ -205,12 +250,13 @@ function criarTabelas() {
 
                 FOREIGN KEY(foto_id)
                 REFERENCES fotos(id)
+
             )
         `);
 
 
         // ====================================================
-        // CONFIGURAÇÕES DO ESTÚDIO
+        // CONFIGURAÇÕES
         // ====================================================
 
         db.run(`
@@ -232,12 +278,13 @@ function criarTabelas() {
 
                 FOREIGN KEY(usuario_id)
                 REFERENCES usuarios(id)
+
             )
         `);
 
 
         console.log(
-            "✅ Tabelas verificadas/criadas."
+            "✅ Tabelas verificadas."
         );
 
     });
@@ -246,12 +293,12 @@ function criarTabelas() {
 
 
 // ============================================================
-// CONFIGURAÇÕES DO EXPRESS
+// EXPRESS
 // ============================================================
 
 app.use(
     express.json({
-        limit: "10mb"
+        limit: "20mb"
     })
 );
 
@@ -259,7 +306,7 @@ app.use(
 app.use(
     express.urlencoded({
         extended: true,
-        limit: "10mb"
+        limit: "20mb"
     })
 );
 
@@ -291,6 +338,7 @@ app.use(
                 60 *
                 60 *
                 24
+
         }
 
     })
@@ -302,28 +350,36 @@ app.use(
 // ARQUIVOS ESTÁTICOS
 // ============================================================
 
-// HTML
 app.use(
     express.static(PUBLIC_DIR)
 );
 
 
-// CSS
 app.use(
     "/css",
     express.static(CSS_DIR)
 );
 
 
-// JavaScript
 app.use(
     "/js",
     express.static(JS_DIR)
 );
 
 
+// PREVIEWS PODEM SER VISUALIZADOS
+app.use(
+    "/previews",
+    express.static(PREVIEWS_DIR)
+);
+
+
+// IMPORTANTE:
+// NÃO disponibilizamos a pasta de originais diretamente.
+
+
 // ============================================================
-// MIDDLEWARE - VERIFICAR LOGIN
+// LOGIN OBRIGATÓRIO
 // ============================================================
 
 function exigirLogin(
@@ -344,11 +400,117 @@ function exigirLogin(
     }
 
     next();
+
 }
 
 
 // ============================================================
-// ROTA PRINCIPAL
+// MULTER
+// ============================================================
+
+const storage = multer.diskStorage({
+
+    destination: function (
+        req,
+        file,
+        callback
+    ) {
+
+        callback(
+            null,
+            ORIGINALS_DIR
+        );
+
+    },
+
+
+    filename: function (
+        req,
+        file,
+        callback
+    ) {
+
+        const extensao =
+            path.extname(
+                file.originalname
+            ).toLowerCase();
+
+
+        const nome =
+            `${Date.now()}-${Math.round(
+                Math.random() * 1E9
+            )}${extensao}`;
+
+
+        callback(
+            null,
+            nome
+        );
+
+    }
+
+});
+
+
+const upload = multer({
+
+    storage: storage,
+
+    limits: {
+
+        fileSize:
+            25 *
+            1024 *
+            1024,
+
+        files:
+            200
+
+    },
+
+    fileFilter: function (
+        req,
+        file,
+        callback
+    ) {
+
+        const tiposPermitidos = [
+
+            "image/jpeg",
+            "image/png",
+            "image/webp"
+
+        ];
+
+
+        if (
+            tiposPermitidos.includes(
+                file.mimetype
+            )
+        ) {
+
+            callback(
+                null,
+                true
+            );
+
+        } else {
+
+            callback(
+                new Error(
+                    "Formato de imagem não permitido."
+                )
+            );
+
+        }
+
+    }
+
+});
+
+
+// ============================================================
+// INÍCIO
 // ============================================================
 
 app.get(
@@ -367,12 +529,16 @@ app.get(
 
 
 // ============================================================
-// CADASTRO DO FOTÓGRAFO
+// CADASTRO
 // ============================================================
 
 app.post(
     "/api/cadastro",
-    async (req, res) => {
+
+    async (
+        req,
+        res
+    ) => {
 
         try {
 
@@ -382,10 +548,6 @@ app.post(
                 senha
             } = req.body;
 
-
-            // --------------------------------------------
-            // VALIDAÇÃO
-            // --------------------------------------------
 
             if (
                 !nome ||
@@ -403,7 +565,9 @@ app.post(
             }
 
 
-            nome = nome.trim();
+            nome =
+                nome.trim();
+
 
             email =
                 email
@@ -411,19 +575,9 @@ app.post(
                     .toLowerCase();
 
 
-            if (nome.length < 2) {
-
-                return res
-                    .status(400)
-                    .json({
-                        erro:
-                            "Digite um nome válido."
-                    });
-
-            }
-
-
-            if (senha.length < 6) {
+            if (
+                senha.length < 6
+            ) {
 
                 return res
                     .status(400)
@@ -434,10 +588,6 @@ app.post(
 
             }
 
-
-            // --------------------------------------------
-            // VERIFICAR SE E-MAIL JÁ EXISTE
-            // --------------------------------------------
 
             db.get(
 
@@ -451,24 +601,22 @@ app.post(
 
                 async (
                     erro,
-                    usuarioExistente
+                    usuario
                 ) => {
 
                     if (erro) {
-
-                        console.error(erro);
 
                         return res
                             .status(500)
                             .json({
                                 erro:
-                                    "Erro ao verificar usuário."
+                                    "Erro no banco."
                             });
 
                     }
 
 
-                    if (usuarioExistente) {
+                    if (usuario) {
 
                         return res
                             .status(409)
@@ -480,20 +628,12 @@ app.post(
                     }
 
 
-                    // ------------------------------------
-                    // CRIPTOGRAFAR SENHA
-                    // ------------------------------------
-
                     const senhaHash =
                         await bcrypt.hash(
                             senha,
                             10
                         );
 
-
-                    // ------------------------------------
-                    // CRIAR USUÁRIO
-                    // ------------------------------------
 
                     db.run(
 
@@ -504,6 +644,7 @@ app.post(
                             email,
                             senha
                         )
+
                         VALUES (?, ?, ?)
                         `,
 
@@ -513,7 +654,9 @@ app.post(
                             senhaHash
                         ],
 
-                        function (erro) {
+                        function (
+                            erro
+                        ) {
 
                             if (erro) {
 
@@ -525,7 +668,7 @@ app.post(
                                     .status(500)
                                     .json({
                                         erro:
-                                            "Não foi possível criar sua conta."
+                                            "Não foi possível criar a conta."
                                     });
 
                             }
@@ -534,10 +677,6 @@ app.post(
                             const usuarioId =
                                 this.lastID;
 
-
-                            // --------------------------------
-                            // CRIAR CONFIGURAÇÃO PADRÃO
-                            // --------------------------------
 
                             db.run(
 
@@ -548,6 +687,7 @@ app.post(
                                     nome_estudio,
                                     email
                                 )
+
                                 VALUES (?, ?, ?)
                                 `,
 
@@ -568,10 +708,7 @@ app.post(
                                         true,
 
                                     mensagem:
-                                        "Conta criada com sucesso.",
-
-                                    usuarioId:
-                                        usuarioId
+                                        "Conta criada com sucesso."
 
                                 });
 
@@ -586,7 +723,6 @@ app.post(
         } catch (erro) {
 
             console.error(
-                "Erro no cadastro:",
                 erro
             );
 
@@ -610,171 +746,135 @@ app.post(
 
 app.post(
     "/api/login",
-    (req, res) => {
 
-        try {
+    (
+        req,
+        res
+    ) => {
 
-            let {
-                email,
-                senha
-            } = req.body;
-
-
-            if (
-                !email ||
-                !senha
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-                        erro:
-                            "Informe o e-mail e a senha."
-                    });
-
-            }
+        let {
+            email,
+            senha
+        } = req.body;
 
 
-            email =
-                email
-                    .trim()
-                    .toLowerCase();
-
-
-            db.get(
-
-                `
-                SELECT *
-                FROM usuarios
-                WHERE email = ?
-                `,
-
-                [email],
-
-                async (
-                    erro,
-                    usuario
-                ) => {
-
-                    if (erro) {
-
-                        console.error(
-                            erro
-                        );
-
-                        return res
-                            .status(500)
-                            .json({
-                                erro:
-                                    "Erro ao realizar login."
-                            });
-
-                    }
-
-
-                    if (!usuario) {
-
-                        return res
-                            .status(401)
-                            .json({
-                                erro:
-                                    "E-mail ou senha incorretos."
-                            });
-
-                    }
-
-
-                    const senhaCorreta =
-                        await bcrypt.compare(
-                            senha,
-                            usuario.senha
-                        );
-
-
-                    if (!senhaCorreta) {
-
-                        return res
-                            .status(401)
-                            .json({
-                                erro:
-                                    "E-mail ou senha incorretos."
-                            });
-
-                    }
-
-
-                    req.session.usuario = {
-
-                        id:
-                            usuario.id,
-
-                        nome:
-                            usuario.nome,
-
-                        email:
-                            usuario.email
-
-                    };
-
-
-                    return res.json({
-
-                        sucesso:
-                            true,
-
-                        mensagem:
-                            "Login realizado com sucesso.",
-
-                        usuario: {
-
-                            id:
-                                usuario.id,
-
-                            nome:
-                                usuario.nome,
-
-                            email:
-                                usuario.email
-
-                        }
-
-                    });
-
-                }
-
-            );
-
-        } catch (erro) {
-
-            console.error(
-                "Erro no login:",
-                erro
-            );
-
+        if (
+            !email ||
+            !senha
+        ) {
 
             return res
-                .status(500)
+                .status(400)
                 .json({
                     erro:
-                        "Erro interno do servidor."
+                        "Informe e-mail e senha."
                 });
 
         }
+
+
+        email =
+            email
+                .trim()
+                .toLowerCase();
+
+
+        db.get(
+
+            `
+            SELECT *
+            FROM usuarios
+            WHERE email = ?
+            `,
+
+            [email],
+
+            async (
+                erro,
+                usuario
+            ) => {
+
+                if (
+                    erro ||
+                    !usuario
+                ) {
+
+                    return res
+                        .status(401)
+                        .json({
+                            erro:
+                                "E-mail ou senha incorretos."
+                        });
+
+                }
+
+
+                const senhaCorreta =
+                    await bcrypt.compare(
+                        senha,
+                        usuario.senha
+                    );
+
+
+                if (!senhaCorreta) {
+
+                    return res
+                        .status(401)
+                        .json({
+                            erro:
+                                "E-mail ou senha incorretos."
+                        });
+
+                }
+
+
+                req.session.usuario = {
+
+                    id:
+                        usuario.id,
+
+                    nome:
+                        usuario.nome,
+
+                    email:
+                        usuario.email
+
+                };
+
+
+                return res.json({
+
+                    sucesso:
+                        true,
+
+                    usuario:
+                        req.session.usuario
+
+                });
+
+            }
+
+        );
 
     }
 );
 
 
 // ============================================================
-// VERIFICAR USUÁRIO LOGADO
+// USUÁRIO LOGADO
 // ============================================================
 
 app.get(
     "/api/usuario",
-    exigirLogin,
-    (req, res) => {
 
-        return res.json({
+    exigirLogin,
+
+    (
+        req,
+        res
+    ) => {
+
+        res.json({
 
             logado:
                 true,
@@ -794,36 +894,23 @@ app.get(
 
 app.post(
     "/api/logout",
-    (req, res) => {
+
+    (
+        req,
+        res
+    ) => {
 
         req.session.destroy(
-            (erro) => {
-
-                if (erro) {
-
-                    return res
-                        .status(500)
-                        .json({
-                            erro:
-                                "Não foi possível sair."
-                        });
-
-                }
-
+            () => {
 
                 res.clearCookie(
                     "connect.sid"
                 );
 
 
-                return res.json({
-
+                res.json({
                     sucesso:
-                        true,
-
-                    mensagem:
-                        "Logout realizado."
-
+                        true
                 });
 
             }
@@ -834,304 +921,249 @@ app.post(
 
 
 // ============================================================
-// CRIAR GALERIA + CLIENTE
+// CRIAR GALERIA
 // ============================================================
 
 app.post(
     "/api/galerias",
+
     exigirLogin,
-    (req, res) => {
 
-        try {
+    (
+        req,
+        res
+    ) => {
 
-            let {
+        let {
 
+            clienteNome,
+            clienteEmail,
+            clienteTelefone,
+
+            nomeGaleria,
+
+            marcaAgua,
+            textoMarca,
+
+            permitirDownload,
+
+            limiteSelecao
+
+        } = req.body;
+
+
+        if (
+            !clienteNome ||
+            !nomeGaleria
+        ) {
+
+            return res
+                .status(400)
+                .json({
+                    erro:
+                        "Informe cliente e nome da galeria."
+                });
+
+        }
+
+
+        clienteNome =
+            clienteNome.trim();
+
+
+        nomeGaleria =
+            nomeGaleria.trim();
+
+
+        clienteEmail =
+            clienteEmail
+                ? clienteEmail
+                    .trim()
+                    .toLowerCase()
+                : null;
+
+
+        clienteTelefone =
+            clienteTelefone
+                ? clienteTelefone.trim()
+                : null;
+
+
+        textoMarca =
+            textoMarca
+                ? textoMarca.trim()
+                : "PhotoStudio";
+
+
+        marcaAgua =
+            marcaAgua
+                ? 1
+                : 0;
+
+
+        permitirDownload =
+            permitirDownload
+                ? 1
+                : 0;
+
+
+        limiteSelecao =
+            parseInt(
+                limiteSelecao
+            );
+
+
+        if (
+            isNaN(limiteSelecao) ||
+            limiteSelecao < 0
+        ) {
+
+            limiteSelecao = 0;
+        }
+
+
+        const usuarioId =
+            req.session.usuario.id;
+
+
+        db.run(
+
+            `
+            INSERT INTO clientes
+            (
+                usuario_id,
+                nome,
+                email,
+                telefone
+            )
+
+            VALUES (?, ?, ?, ?)
+            `,
+
+            [
+                usuarioId,
                 clienteNome,
                 clienteEmail,
-                clienteTelefone,
-
-                nomeGaleria,
-
-                marcaAgua,
-                textoMarca,
-
-                permitirDownload,
-
-                limiteSelecao
-
-            } = req.body;
-
-
-            // --------------------------------------------
-            // VALIDAÇÃO
-            // --------------------------------------------
-
-            if (
-                !clienteNome ||
-                !nomeGaleria
-            ) {
-
-                return res
-                    .status(400)
-                    .json({
-                        erro:
-                            "Informe o nome do cliente e da galeria."
-                    });
-
-            }
-
-
-            clienteNome =
-                clienteNome.trim();
-
-
-            nomeGaleria =
-                nomeGaleria.trim();
-
-
-            clienteEmail =
-                clienteEmail
-                    ? clienteEmail
-                        .trim()
-                        .toLowerCase()
-                    : null;
-
-
-            clienteTelefone =
                 clienteTelefone
-                    ? clienteTelefone.trim()
-                    : null;
+            ],
 
-
-            textoMarca =
-                textoMarca
-                    ? textoMarca.trim()
-                    : "PhotoStudio";
-
-
-            marcaAgua =
-                marcaAgua
-                    ? 1
-                    : 0;
-
-
-            permitirDownload =
-                permitirDownload
-                    ? 1
-                    : 0;
-
-
-            limiteSelecao =
-                parseInt(
-                    limiteSelecao
-                );
-
-
-            if (
-                isNaN(limiteSelecao) ||
-                limiteSelecao < 0
+            function (
+                erro
             ) {
 
-                limiteSelecao = 0;
+                if (erro) {
 
-            }
+                    console.error(
+                        erro
+                    );
 
+                    return res
+                        .status(500)
+                        .json({
+                            erro:
+                                "Erro ao criar cliente."
+                        });
 
-            const usuarioId =
-                req.session.usuario.id;
-
-
-            // --------------------------------------------
-            // CRIAR CLIENTE
-            // --------------------------------------------
-
-            db.run(
-
-                `
-                INSERT INTO clientes
-                (
-                    usuario_id,
-                    nome,
-                    email,
-                    telefone
-                )
-
-                VALUES (?, ?, ?, ?)
-                `,
-
-                [
-                    usuarioId,
-                    clienteNome,
-                    clienteEmail,
-                    clienteTelefone
-                ],
-
-                function (erro) {
-
-                    if (erro) {
-
-                        console.error(
-                            "Erro ao criar cliente:",
-                            erro
-                        );
+                }
 
 
-                        return res
-                            .status(500)
-                            .json({
-                                erro:
-                                    "Não foi possível criar o cliente."
-                            });
-
-                    }
+                const clienteId =
+                    this.lastID;
 
 
-                    const clienteId =
-                        this.lastID;
+                db.run(
 
+                    `
+                    INSERT INTO galerias
+                    (
+                        usuario_id,
+                        cliente_id,
+                        nome,
+                        marca_agua,
+                        texto_marca_agua,
+                        permitir_download,
+                        limite_selecao,
+                        status
+                    )
 
-                    // ------------------------------------
-                    // CRIAR GALERIA
-                    // ------------------------------------
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    `,
 
-                    db.run(
+                    [
+                        usuarioId,
+                        clienteId,
+                        nomeGaleria,
+                        marcaAgua,
+                        textoMarca,
+                        permitirDownload,
+                        limiteSelecao,
+                        "aguardando_selecao"
+                    ],
 
-                        `
-                        INSERT INTO galerias
-                        (
-                            usuario_id,
+                    function (
+                        erro
+                    ) {
 
-                            cliente_id,
+                        if (erro) {
 
-                            nome,
-
-                            marca_agua,
-
-                            texto_marca_agua,
-
-                            permitir_download,
-
-                            limite_selecao,
-
-                            status
-                        )
-
-                        VALUES (
-                            ?,
-                            ?,
-                            ?,
-                            ?,
-                            ?,
-                            ?,
-                            ?,
-                            ?
-                        )
-                        `,
-
-                        [
-                            usuarioId,
-
-                            clienteId,
-
-                            nomeGaleria,
-
-                            marcaAgua,
-
-                            textoMarca,
-
-                            permitirDownload,
-
-                            limiteSelecao,
-
-                            "aguardando_selecao"
-                        ],
-
-                        function (erro) {
-
-                            if (erro) {
-
-                                console.error(
-                                    "Erro ao criar galeria:",
-                                    erro
-                                );
-
-
-                                return res
-                                    .status(500)
-                                    .json({
-                                        erro:
-                                            "Não foi possível criar a galeria."
-                                    });
-
-                            }
-
-
-                            const galeriaId =
-                                this.lastID;
-
+                            console.error(
+                                erro
+                            );
 
                             return res
-                                .status(201)
+                                .status(500)
                                 .json({
-
-                                    sucesso:
-                                        true,
-
-                                    mensagem:
-                                        "Galeria criada com sucesso.",
-
-                                    galeria: {
-
-                                        id:
-                                            galeriaId,
-
-                                        clienteId:
-                                            clienteId,
-
-                                        nome:
-                                            nomeGaleria
-
-                                    }
-
+                                    erro:
+                                        "Erro ao criar galeria."
                                 });
 
                         }
 
-                    );
 
-                }
+                        return res
+                            .status(201)
+                            .json({
 
-            );
+                                sucesso:
+                                    true,
 
-        } catch (erro) {
+                                galeria: {
 
-            console.error(
-                "Erro ao criar galeria:",
-                erro
-            );
+                                    id:
+                                        this.lastID,
 
+                                    nome:
+                                        nomeGaleria
 
-            return res
-                .status(500)
-                .json({
-                    erro:
-                        "Erro interno do servidor."
-                });
+                                }
 
-        }
+                            });
+
+                    }
+
+                );
+
+            }
+
+        );
 
     }
 );
 
 
 // ============================================================
-// LISTAR GALERIAS DO FOTÓGRAFO
+// LISTAR GALERIAS
 // ============================================================
 
 app.get(
     "/api/galerias",
+
     exigirLogin,
-    (req, res) => {
+
+    (
+        req,
+        res
+    ) => {
 
         const usuarioId =
             req.session.usuario.id;
@@ -1143,48 +1175,39 @@ app.get(
             SELECT
 
                 galerias.id,
-
                 galerias.nome,
-
                 galerias.marca_agua,
-
                 galerias.texto_marca_agua,
-
                 galerias.permitir_download,
-
                 galerias.limite_selecao,
-
                 galerias.valor,
-
                 galerias.status,
-
                 galerias.criado_em,
 
-                clientes.id AS cliente_id,
+                clientes.nome
+                    AS cliente_nome,
 
-                clientes.nome AS cliente_nome,
+                clientes.email
+                    AS cliente_email,
 
-                clientes.email AS cliente_email,
-
-                clientes.telefone AS cliente_telefone,
+                clientes.telefone
+                    AS cliente_telefone,
 
                 (
                     SELECT COUNT(*)
-
                     FROM fotos
-
                     WHERE fotos.galeria_id =
                           galerias.id
-                ) AS quantidade_fotos,
+                )
+                AS quantidade_fotos,
 
                 (
                     SELECT COUNT(*)
-
                     FROM selecoes
-
                     WHERE selecoes.galeria_id =
                           galerias.id
-                ) AS quantidade_selecionadas
+                )
+                AS quantidade_selecionadas
 
             FROM galerias
 
@@ -1210,18 +1233,17 @@ app.get(
                         erro
                     );
 
-
                     return res
                         .status(500)
                         .json({
                             erro:
-                                "Não foi possível carregar as galerias."
+                                "Erro ao carregar galerias."
                         });
 
                 }
 
 
-                return res.json({
+                res.json({
 
                     sucesso:
                         true,
@@ -1245,29 +1267,22 @@ app.get(
 
 app.get(
     "/api/galerias/:id",
+
     exigirLogin,
-    (req, res) => {
+
+    (
+        req,
+        res
+    ) => {
 
         const galeriaId =
-            parseInt(
+            Number(
                 req.params.id
             );
 
 
         const usuarioId =
             req.session.usuario.id;
-
-
-        if (isNaN(galeriaId)) {
-
-            return res
-                .status(400)
-                .json({
-                    erro:
-                        "Galeria inválida."
-                });
-
-        }
 
 
         db.get(
@@ -1307,24 +1322,10 @@ app.get(
                 galeria
             ) => {
 
-                if (erro) {
-
-                    console.error(
-                        erro
-                    );
-
-
-                    return res
-                        .status(500)
-                        .json({
-                            erro:
-                                "Erro ao carregar galeria."
-                        });
-
-                }
-
-
-                if (!galeria) {
+                if (
+                    erro ||
+                    !galeria
+                ) {
 
                     return res
                         .status(404)
@@ -1336,7 +1337,7 @@ app.get(
                 }
 
 
-                return res.json({
+                res.json({
 
                     sucesso:
                         true,
@@ -1355,16 +1356,26 @@ app.get(
 
 
 // ============================================================
-// DEFINIR VALOR DA GALERIA
+// UPLOAD DAS FOTOS
 // ============================================================
 
-app.put(
-    "/api/galerias/:id/valor",
+app.post(
+    "/api/galerias/:id/fotos",
+
     exigirLogin,
-    (req, res) => {
+
+    upload.array(
+        "fotos",
+        200
+    ),
+
+    async (
+        req,
+        res
+    ) => {
 
         const galeriaId =
-            parseInt(
+            Number(
                 req.params.id
             );
 
@@ -1373,40 +1384,26 @@ app.put(
             req.session.usuario.id;
 
 
-        let {
-            valor
-        } = req.body;
-
-
-        valor =
-            Number(valor);
-
-
         if (
-            isNaN(valor) ||
-            valor < 0
+            !req.files ||
+            req.files.length === 0
         ) {
 
             return res
                 .status(400)
                 .json({
                     erro:
-                        "Informe um valor válido."
+                        "Selecione pelo menos uma foto."
                 });
 
         }
 
 
-        db.run(
+        db.get(
 
             `
-            UPDATE galerias
-
-            SET
-                valor = ?,
-
-                status =
-                    'valor_definido'
+            SELECT *
+            FROM galerias
 
             WHERE id = ?
 
@@ -1414,17 +1411,110 @@ app.put(
             `,
 
             [
-                valor,
                 galeriaId,
                 usuarioId
             ],
 
-            function (erro) {
+            async (
+                erro,
+                galeria
+            ) => {
 
-                if (erro) {
+                if (
+                    erro ||
+                    !galeria
+                ) {
+
+                    apagarArquivos(
+                        req.files
+                    );
+
+
+                    return res
+                        .status(404)
+                        .json({
+                            erro:
+                                "Galeria não encontrada."
+                        });
+
+                }
+
+
+                try {
+
+                    const fotosSalvas =
+                        [];
+
+
+                    for (
+                        const arquivo of req.files
+                    ) {
+
+                        const nomePreview =
+                            `preview-${arquivo.filename}.jpg`;
+
+
+                        const caminhoPreview =
+                            path.join(
+                                PREVIEWS_DIR,
+                                nomePreview
+                            );
+
+
+                        await criarPreview(
+                            arquivo.path,
+                            caminhoPreview,
+                            galeria
+                        );
+
+
+                        await salvarFotoNoBanco(
+
+                            galeriaId,
+
+                            arquivo.originalname,
+
+                            arquivo.filename,
+
+                            nomePreview
+
+                        );
+
+
+                        fotosSalvas.push({
+
+                            nome:
+                                arquivo.originalname,
+
+                            preview:
+                                `/previews/${nomePreview}`
+
+                        });
+
+                    }
+
+
+                    return res
+                        .status(201)
+                        .json({
+
+                            sucesso:
+                                true,
+
+                            mensagem:
+                                `${fotosSalvas.length} foto(s) enviada(s) com sucesso.`,
+
+                            fotos:
+                                fotosSalvas
+
+                        });
+
+
+                } catch (erroProcessamento) {
 
                     console.error(
-                        erro
+                        "Erro ao processar fotos:",
+                        erroProcessamento
                     );
 
 
@@ -1432,14 +1522,382 @@ app.put(
                         .status(500)
                         .json({
                             erro:
-                                "Não foi possível salvar o valor."
+                                "Erro ao processar as fotos."
                         });
 
                 }
 
+            }
+
+        );
+
+    }
+);
+
+
+// ============================================================
+// CRIAR PREVIEW
+// ============================================================
+
+async function criarPreview(
+    arquivoOriginal,
+    arquivoPreview,
+    galeria
+) {
+
+    const imagem =
+        sharp(
+            arquivoOriginal
+        );
+
+
+    const metadata =
+        await imagem.metadata();
+
+
+    const largura =
+        Math.min(
+            metadata.width || 1600,
+            1600
+        );
+
+
+    let processamento =
+        imagem
+
+            .rotate()
+
+            .resize({
+
+                width:
+                    largura,
+
+                withoutEnlargement:
+                    true
+
+            });
+
+
+    if (
+        galeria.marca_agua
+    ) {
+
+        const texto =
+            escaparSVG(
+                galeria.texto_marca_agua ||
+                "PhotoStudio"
+            );
+
+
+        const larguraMarca =
+            800;
+
+
+        const alturaMarca =
+            250;
+
+
+        const svgMarca = Buffer.from(`
+
+            <svg
+                width="${larguraMarca}"
+                height="${alturaMarca}"
+                xmlns="http://www.w3.org/2000/svg"
+            >
+
+                <style>
+
+                    .marca {
+
+                        fill: white;
+
+                        font-size: 70px;
+
+                        font-family:
+                            Arial,
+                            Helvetica,
+                            sans-serif;
+
+                        font-weight: bold;
+
+                        opacity: 0.42;
+
+                    }
+
+                </style>
+
+
+                <text
+
+                    x="50%"
+
+                    y="50%"
+
+                    text-anchor="middle"
+
+                    dominant-baseline="middle"
+
+                    class="marca"
+
+                    transform="
+                        rotate(
+                            -20,
+                            ${larguraMarca / 2},
+                            ${alturaMarca / 2}
+                        )
+                    "
+
+                >
+
+                    ${texto}
+
+                </text>
+
+            </svg>
+
+        `);
+
+
+        processamento =
+            processamento.composite([
+
+                {
+
+                    input:
+                        svgMarca,
+
+                    gravity:
+                        "center"
+
+                }
+
+            ]);
+
+    }
+
+
+    await processamento
+
+        .jpeg({
+
+            quality:
+                82
+
+        })
+
+        .toFile(
+            arquivoPreview
+        );
+
+}
+
+
+// ============================================================
+// ESCAPAR TEXTO SVG
+// ============================================================
+
+function escaparSVG(
+    texto
+) {
+
+    return String(
+        texto
+    )
+
+        .replaceAll(
+            "&",
+            "&amp;"
+        )
+
+        .replaceAll(
+            "<",
+            "&lt;"
+        )
+
+        .replaceAll(
+            ">",
+            "&gt;"
+        )
+
+        .replaceAll(
+            '"',
+            "&quot;"
+        )
+
+        .replaceAll(
+            "'",
+            "&apos;"
+        );
+
+}
+
+
+// ============================================================
+// SALVAR FOTO NO BANCO
+// ============================================================
+
+function salvarFotoNoBanco(
+
+    galeriaId,
+
+    nomeOriginal,
+
+    nomeArquivo,
+
+    nomePreview
+
+) {
+
+    return new Promise(
+        (
+            resolve,
+            reject
+        ) => {
+
+            db.run(
+
+                `
+                INSERT INTO fotos
+                (
+                    galeria_id,
+                    nome_arquivo,
+                    arquivo_original,
+                    arquivo_preview
+                )
+
+                VALUES (?, ?, ?, ?)
+                `,
+
+                [
+                    galeriaId,
+                    nomeOriginal,
+                    nomeArquivo,
+                    nomePreview
+                ],
+
+                function (
+                    erro
+                ) {
+
+                    if (erro) {
+
+                        reject(
+                            erro
+                        );
+
+                    } else {
+
+                        resolve(
+                            this.lastID
+                        );
+
+                    }
+
+                }
+
+            );
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// APAGAR ARQUIVOS
+// ============================================================
+
+function apagarArquivos(
+    arquivos
+) {
+
+    if (!arquivos) {
+        return;
+    }
+
+
+    arquivos.forEach(
+        (
+            arquivo
+        ) => {
+
+            try {
 
                 if (
-                    this.changes === 0
+                    fs.existsSync(
+                        arquivo.path
+                    )
+                ) {
+
+                    fs.unlinkSync(
+                        arquivo.path
+                    );
+                }
+
+            } catch (
+                erro
+            ) {
+
+                console.error(
+                    erro
+                );
+
+            }
+
+        }
+    );
+
+}
+
+
+// ============================================================
+// LISTAR FOTOS DA GALERIA
+// ============================================================
+
+app.get(
+    "/api/galerias/:id/fotos",
+
+    exigirLogin,
+
+    (
+        req,
+        res
+    ) => {
+
+        const galeriaId =
+            Number(
+                req.params.id
+            );
+
+
+        const usuarioId =
+            req.session.usuario.id;
+
+
+        db.get(
+
+            `
+            SELECT id
+            FROM galerias
+
+            WHERE id = ?
+
+            AND usuario_id = ?
+            `,
+
+            [
+                galeriaId,
+                usuarioId
+            ],
+
+            (
+                erro,
+                galeria
+            ) => {
+
+                if (
+                    erro ||
+                    !galeria
                 ) {
 
                     return res
@@ -1452,13 +1910,175 @@ app.put(
                 }
 
 
-                return res.json({
+                db.all(
+
+                    `
+                    SELECT
+
+                        id,
+                        nome_arquivo,
+                        arquivo_preview,
+                        criado_em
+
+                    FROM fotos
+
+                    WHERE galeria_id = ?
+
+                    ORDER BY id DESC
+                    `,
+
+                    [
+                        galeriaId
+                    ],
+
+                    (
+                        erroFotos,
+                        fotos
+                    ) => {
+
+                        if (
+                            erroFotos
+                        ) {
+
+                            return res
+                                .status(500)
+                                .json({
+                                    erro:
+                                        "Erro ao carregar fotos."
+                                });
+
+                        }
+
+
+                        const resultado =
+                            fotos.map(
+                                (
+                                    foto
+                                ) => ({
+
+                                    id:
+                                        foto.id,
+
+                                    nome:
+                                        foto.nome_arquivo,
+
+                                    preview:
+                                        `/previews/${foto.arquivo_preview}`,
+
+                                    criado_em:
+                                        foto.criado_em
+
+                                })
+                            );
+
+
+                        res.json({
+
+                            sucesso:
+                                true,
+
+                            fotos:
+                                resultado
+
+                        });
+
+                    }
+
+                );
+
+            }
+
+        );
+
+    }
+);
+
+
+// ============================================================
+// DEFINIR VALOR
+// ============================================================
+
+app.put(
+    "/api/galerias/:id/valor",
+
+    exigirLogin,
+
+    (
+        req,
+        res
+    ) => {
+
+        const galeriaId =
+            Number(
+                req.params.id
+            );
+
+
+        const usuarioId =
+            req.session.usuario.id;
+
+
+        const valor =
+            Number(
+                req.body.valor
+            );
+
+
+        if (
+            isNaN(valor) ||
+            valor < 0
+        ) {
+
+            return res
+                .status(400)
+                .json({
+                    erro:
+                        "Valor inválido."
+                });
+
+        }
+
+
+        db.run(
+
+            `
+            UPDATE galerias
+
+            SET
+                valor = ?,
+                status = 'valor_definido'
+
+            WHERE id = ?
+
+            AND usuario_id = ?
+            `,
+
+            [
+                valor,
+                galeriaId,
+                usuarioId
+            ],
+
+            function (
+                erro
+            ) {
+
+                if (erro) {
+
+                    return res
+                        .status(500)
+                        .json({
+                            erro:
+                                "Erro ao salvar valor."
+                        });
+
+                }
+
+
+                res.json({
 
                     sucesso:
                         true,
-
-                    mensagem:
-                        "Valor salvo com sucesso.",
 
                     valor:
                         valor
@@ -1474,29 +2094,30 @@ app.put(
 
 
 // ============================================================
-// CONFIGURAÇÕES DO ESTÚDIO
+// CONFIGURAÇÕES
 // ============================================================
 
 app.get(
     "/api/configuracoes",
+
     exigirLogin,
-    (req, res) => {
 
-        const usuarioId =
-            req.session.usuario.id;
-
+    (
+        req,
+        res
+    ) => {
 
         db.get(
 
             `
             SELECT *
-
             FROM configuracoes
-
             WHERE usuario_id = ?
             `,
 
-            [usuarioId],
+            [
+                req.session.usuario.id
+            ],
 
             (
                 erro,
@@ -1504,11 +2125,6 @@ app.get(
             ) => {
 
                 if (erro) {
-
-                    console.error(
-                        erro
-                    );
-
 
                     return res
                         .status(500)
@@ -1520,7 +2136,7 @@ app.get(
                 }
 
 
-                return res.json({
+                res.json({
 
                     sucesso:
                         true,
@@ -1544,14 +2160,15 @@ app.get(
 
 app.put(
     "/api/configuracoes",
+
     exigirLogin,
-    (req, res) => {
 
-        const usuarioId =
-            req.session.usuario.id;
+    (
+        req,
+        res
+    ) => {
 
-
-        let {
+        const {
 
             nomeEstudio,
             telefone,
@@ -1559,30 +2176,6 @@ app.put(
             instagram
 
         } = req.body;
-
-
-        nomeEstudio =
-            nomeEstudio
-                ? nomeEstudio.trim()
-                : "PhotoStudio";
-
-
-        telefone =
-            telefone
-                ? telefone.trim()
-                : null;
-
-
-        email =
-            email
-                ? email.trim()
-                : null;
-
-
-        instagram =
-            instagram
-                ? instagram.trim()
-                : null;
 
 
         db.run(
@@ -1617,39 +2210,41 @@ app.put(
             `,
 
             [
-                usuarioId,
-                nomeEstudio,
-                telefone,
-                email,
-                instagram
+                req.session.usuario.id,
+
+                nomeEstudio ||
+                "PhotoStudio",
+
+                telefone ||
+                null,
+
+                email ||
+                null,
+
+                instagram ||
+                null
             ],
 
-            function (erro) {
+            (
+                erro
+            ) => {
 
                 if (erro) {
-
-                    console.error(
-                        erro
-                    );
-
 
                     return res
                         .status(500)
                         .json({
                             erro:
-                                "Não foi possível salvar as configurações."
+                                "Erro ao salvar configurações."
                         });
 
                 }
 
 
-                return res.json({
+                res.json({
 
                     sucesso:
-                        true,
-
-                    mensagem:
-                        "Configurações salvas."
+                        true
 
                 });
 
@@ -1662,26 +2257,7 @@ app.put(
 
 
 // ============================================================
-// ROTA 404 DA API
-// ============================================================
-
-app.use(
-    "/api",
-    (req, res) => {
-
-        return res
-            .status(404)
-            .json({
-                erro:
-                    "Rota não encontrada."
-            });
-
-    }
-);
-
-
-// ============================================================
-// TRATAMENTO DE ERROS
+// ERRO DO MULTER / SERVIDOR
 // ============================================================
 
 app.use(
@@ -1693,15 +2269,45 @@ app.use(
     ) => {
 
         console.error(
-            "Erro no servidor:",
+            "Erro:",
             erro
         );
+
+
+        if (
+            erro instanceof multer.MulterError
+        ) {
+
+            if (
+                erro.code ===
+                "LIMIT_FILE_SIZE"
+            ) {
+
+                return res
+                    .status(400)
+                    .json({
+                        erro:
+                            "Uma das fotos ultrapassa 25 MB."
+                    });
+
+            }
+
+
+            return res
+                .status(400)
+                .json({
+                    erro:
+                        erro.message
+                });
+
+        }
 
 
         return res
             .status(500)
             .json({
                 erro:
+                    erro.message ||
                     "Erro interno do servidor."
             });
 
@@ -1715,11 +2321,12 @@ app.use(
 
 app.listen(
     PORT,
+
     () => {
 
         console.log("");
         console.log(
-            "===================================="
+            "========================================"
         );
 
         console.log(
@@ -1735,7 +2342,7 @@ app.listen(
         );
 
         console.log(
-            "===================================="
+            "========================================"
         );
 
         console.log("");
